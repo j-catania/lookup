@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Globe 3D - Surveillance des Satellites en Direct</title>
+  
+  <!-- CesiumJS -->
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Cesium.js"></script>
+  
+  <!-- Satellite.js pour propagation TLE SGP4 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.0.0/satellite.min.js"></script>
+
+  <style>
+    html, body, #cesiumContainer {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #000;
+    }
+
+    /* Panneau IHM / Filtres */
+    #hud {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      z-index: 10;
+      background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(10px);
+      color: #e2e8f0;
+      padding: 16px;
+      border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      width: 320px;
+      font-size: 13px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    #hud h2 {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .form-group {
+      margin-bottom: 10px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 4px;
+      color: #94a3b8;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    select, input[type="text"] {
+      width: 100%;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #fff;
+      padding: 7px 10px;
+      border-radius: 6px;
+      box-sizing: border-box;
+      font-size: 13px;
+      outline: none;
+    }
+
+    select:focus, input[type="text"]:focus {
+      border-color: #38bdf8;
+    }
+
+    .btn {
+      width: 100%;
+      background: #0284c7;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+
+    .btn:hover { background: #0369a1; }
+    .btn:disabled { background: #475569; cursor: not-allowed; }
+
+    .telemetry-box {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 10px;
+      border-radius: 6px;
+      margin-top: 10px;
+      border-left: 3px solid #38bdf8;
+    }
+
+    .telemetry-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 3px;
+    }
+
+    .telemetry-val {
+      font-family: monospace;
+      color: #f8fafc;
+    }
+
+    .badge {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+    .badge-user { background: #38bdf8; }
+    .badge-sat { background: #4ade80; }
+  </style>
+</head>
+<body>
+
+  <div id="cesiumContainer"></div>
+
+  <div id="hud">
+    <h2>🛰️ Contrôle Orbital</h2>
+
+    <!-- Filtres IHM -->
+    <div class="form-group">
+      <label for="groupSelect">Groupe CelesTrak</label>
+      <select id="groupSelect">
+        <option value="stations">Stations Spatiales (ISS, Tiangong...)</option>
+        <option value="weather">Météo (NOAA, GOES, MetOp...)</option>
+        <option value="gps-ops">GPS (Constellation opérationnelle)</option>
+        <option value="starlink">Starlink (Constellation complète)</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="searchInput">Filtrer par nom</label>
+      <input type="text" id="searchInput" placeholder="Ex: ISS, NOAA, STARLINK...">
+    </div>
+
+    <button class="btn" id="locateBtn" style="margin-bottom: 12px;">📍 Recentrer sur ma position</button>
+
+    <!-- Télémétrie en direct -->
+    <div class="telemetry-box">
+      <div style="font-weight: bold; margin-bottom: 6px;" id="selectedSatName">
+        <span class="badge badge-sat"></span>Aucun satellite sélectionné
+      </div>
+      <div class="telemetry-row">
+        <span>Satellites visibles :</span>
+        <span class="telemetry-val" id="satCount">0</span>
+      </div>
+      <div class="telemetry-row">
+        <span>Latitude / Longitude :</span>
+        <span class="telemetry-val" id="satCoords">--</span>
+      </div>
+      <div class="telemetry-row">
+        <span>Altitude :</span>
+        <span class="telemetry-val" id="satAlt">--</span>
+      </div>
+      <div class="telemetry-row">
+        <span>Vitesse :</span>
+        <span class="telemetry-val" id="satSpeed">--</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    Cesium.Ion.defaultAccessToken = '';
+
+    // Initialisation du visualiseur Cesium
+    const viewer = new Cesium.Viewer('cesiumContainer', {
+      baseLayerPicker: false,
+      geocoder: false,
+      homeButton: false,
+      sceneModePicker: false,
+      navigationHelpButton: false,
+      animation: false,
+      timeline: false,
+      fullscreenButton: false,
+      skyAtmosphere: new Cesium.SkyAtmosphere(),
+      globe: new Cesium.Globe()
+    });
+
+    // 1. Couche Satellite HD (Continents, Océans et reliefs)
+    viewer.imageryLayers.addImageryProvider(
+      new Cesium.UrlTemplateImageryProvider({
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        maximumLevel: 19,
+        credit: 'Esri, Earthstar Geographics'
+      })
+    );
+
+    // 2. Couche Libellés (Noms des mers, océans, pays et continents)
+    viewer.imageryLayers.addImageryProvider(
+      new Cesium.UrlTemplateImageryProvider({
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        maximumLevel: 19
+      })
+    );
+
+    viewer.scene.globe.enableLighting = true;
+
+    // Gestion de la position utilisateur
+    let userCoords = null;
+    let userEntity = null;
+
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          userCoords = {
+            lon: pos.coords.longitude,
+            lat: pos.coords.latitude
+          };
+
+          userEntity = viewer.entities.add({
+            name: "Ma position",
+            position: Cesium.Cartesian3.fromDegrees(userCoords.lon, userCoords.lat, 0),
+            point: {
+              pixelSize: 12,
+              color: Cesium.Color.fromCssColorString('#38bdf8'),
+              outlineColor: Cesium.Color.WHITE,
+              outlineWidth: 2
+            },
+            label: {
+              text: "Vous êtes ici",
+              font: "12px sans-serif",
+              fillColor: Cesium.Color.WHITE,
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 3,
+              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+              verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+              pixelOffset: new Cesium.Cartesian2(0, -12)
+            }
+          });
+        },
+        (err) => console.warn("Géolocalisation non accordée :", err.message)
+      );
+    }
+
+    document.getElementById('locateBtn').onclick = () => {
+      if (userCoords) {
+        viewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(userCoords.lon, userCoords.lat, 3500000)
+        });
+      } else {
+        alert("Position non disponible ou non autorisée dans le navigateur.");
+      }
+    };
+
+    // Gestion du rendu des satellites avec PointPrimitiveCollection (haute performance)
+    let satellitesList = [];
+    let selectedSatellite = null;
+    let pointCollection = viewer.scene.primitives.add(new Cesium.PointPrimitiveCollection());
+
+    // Parsing du format TLE (3 lignes : Nom / Ligne 1 / Ligne 2)
+    function parseTLE(rawText) {
+      const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      const results = [];
+
+      for (let i = 0; i < lines.length; i += 3) {
+        if (lines[i] && lines[i + 1] && lines[i + 2]) {
+          const name = lines[i];
+          const line1 = lines[i + 1];
+          const line2 = lines[i + 2];
+          try {
+            const satrec = satellite.twoline2satrec(line1, line2);
+            results.push({ name, satrec, visible: true, primitive: null });
+          } catch (e) {
+            // Ignorer les éléments corrompus
+          }
+        }
+      }
+      return results;
+    }
+
+    // Chargement dynamique depuis CelesTrak
+    async function loadSatellitesGroup(groupName) {
+      const selectEl = document.getElementById('groupSelect');
+      selectEl.disabled = true;
+      document.getElementById('satCount').textContent = 'Chargement...';
+
+      // Nettoyage de la collection existante
+      pointCollection.removeAll();
+      satellitesList = [];
+      selectedSatellite = null;
+      resetTelemetryHUD();
+
+      try {
+        const url = `https://celestrak.org/NORAD/elements/gp.php?GROUP=${groupName}&FORMAT=tle`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Erreur réseau");
+        const rawTLE = await res.text();
+
+        satellitesList = parseTLE(rawTLE);
+
+        // Instanciation des primitives graphiques
+        satellitesList.forEach(sat => {
+          sat.primitive = pointCollection.add({
+            position: Cesium.Cartesian3.ZERO,
+            pixelSize: 5,
+            color: Cesium.Color.LIME,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 1,
+            id: sat // Référence pour la détection au clic
+          });
+        });
+
+        // Par défaut, sélectionner le premier s'il y en a
+        if (satellitesList.length > 0) {
+          selectSatellite(satellitesList[0]);
+        }
+
+        applySearchFilter();
+        updatePositions();
+
+      } catch (err) {
+        console.error("Échec CelesTrak :", err);
+        alert("Impossible de charger les données orbitales (problème de réseau ou CORS).");
+      } finally {
+        selectEl.disabled = false;
+      }
+    }
+
+    // Filtre de recherche dynamique
+    function applySearchFilter() {
+      const query = document.getElementById('searchInput').value.trim().toUpperCase();
+      let visibleCount = 0;
+
+      satellitesList.forEach(sat => {
+        const match = sat.name.toUpperCase().includes(query);
+        sat.visible = match;
+        if (sat.primitive) {
+          sat.primitive.show = match;
+        }
+        if (match) visibleCount++;
+      });
+
+      document.getElementById('satCount').textContent = visibleCount;
+    }
+
+    document.getElementById('searchInput').addEventListener('input', applySearchFilter);
+
+    document.getElementById('groupSelect').addEventListener('change', (e) => {
+      loadSatellitesGroup(e.target.value);
+    });
+
+    // Sélection d'un satellite (au clic ou automatique)
+    function selectSatellite(sat) {
+      if (selectedSatellite && selectedSatellite.primitive) {
+        selectedSatellite.primitive.color = Cesium.Color.LIME;
+        selectedSatellite.primitive.pixelSize = 5;
+      }
+
+      selectedSatellite = sat;
+      if (sat && sat.primitive) {
+        sat.primitive.color = Cesium.Color.YELLOW;
+        sat.primitive.pixelSize = 8;
+        document.getElementById('selectedSatName').innerHTML = `<span class="badge badge-sat"></span>${sat.name}`;
+      }
+    }
+
+    function resetTelemetryHUD() {
+      document.getElementById('selectedSatName').innerHTML = `<span class="badge badge-sat"></span>Aucun satellite sélectionné`;
+      document.getElementById('satCoords').textContent = '--';
+      document.getElementById('satAlt').textContent = '--';
+      document.getElementById('satSpeed').textContent = '--';
+    }
+
+    // Gestion du clic sur le globe pour inspecter un satellite
+    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+    handler.setInputAction((click) => {
+      const pickedObject = viewer.scene.pick(click.position);
+      if (Cesium.defined(pickedObject) && pickedObject.primitive && pickedObject.id && pickedObject.id.satrec) {
+        selectSatellite(pickedObject.id);
+      }
+    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+    // Calcul orbital temps réel
+    function updatePositions() {
+      const now = new Date();
+      const gmst = satellite.gstime(now);
+
+      satellitesList.forEach(sat => {
+        if (!sat.visible) return;
+
+        const posVel = satellite.propagate(sat.satrec, now);
+        if (posVel.position) {
+          const geodetic = satellite.eciToGeodetic(posVel.position, gmst);
+          sat.primitive.position = Cesium.Cartesian3.fromRadians(
+            geodetic.longitude,
+            geodetic.latitude,
+            geodetic.height * 1000
+          );
+
+          // Si c'est le satellite sélectionné, mettre à jour le HUD
+          if (selectedSatellite === sat && posVel.velocity) {
+            const lat = Cesium.Math.toDegrees(geodetic.latitude).toFixed(2);
+            const lon = Cesium.Math.toDegrees(geodetic.longitude).toFixed(2);
+            const alt = Math.round(geodetic.height);
+            const v = posVel.velocity;
+            const speedKmH = Math.round(Math.sqrt(v.x**2 + v.y**2 + v.z**2) * 3600);
+
+            document.getElementById('satCoords').textContent = `${lat}°, ${lon}°`;
+            document.getElementById('satAlt').textContent = `${alt} km`;
+            document.getElementById('satSpeed').textContent = `${speedKmH.toLocaleString()} km/h`;
+          }
+        }
+      });
+    }
+
+    // Boucle de mise à jour toutes les 1000 ms pour ménager le CPU
+    setInterval(updatePositions, 1000);
+
+    // Vue initiale
+    viewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(2.35, 48.85, 22000000)
+    });
+
+    // Chargement initial du groupe "stations"
+    loadSatellitesGroup('stations');
+  </script>
+</body>
+</html>

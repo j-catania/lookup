@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Globe 3D - Continents, Océans & Satellites</title>
+  
+  <!-- CesiumJS CSS et JS -->
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Cesium.js"></script>
+  
+  <!-- Satellite.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.0.0/satellite.min.js"></script>
+
+  <style>
+    html, body, #cesiumContainer {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    #hud {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      z-index: 10;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      color: #fff;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      max-width: 320px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    #hud h2 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+      color: #38bdf8;
+    }
+
+    .badge {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+
+    .badge-user { background: #38bdf8; box-shadow: 0 0 8px #38bdf8; }
+    .badge-sat { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+
+    .btn-action {
+      background: #0284c7;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 8px;
+      font-size: 12px;
+    }
+    .btn-action:hover {
+      background: #0369a1;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="cesiumContainer"></div>
+
+  <div id="hud">
+    <h2>🛰️ Surveillance Orbitale</h2>
+    <p><span class="badge badge-user"></span><strong>Ma position :</strong> <span id="userPosText">Détection en cours...</span></p>
+    <button class="btn-action" id="locateBtn">Recentrer sur moi</button>
+    <hr style="border: 0.5px solid #334155; margin: 12px 0;">
+    <p><span class="badge badge-sat"></span><strong>Satellite actif :</strong> <span id="satName">ISS</span></p>
+    <div><strong>Lat / Lon :</strong> <span id="satCoords">--</span></div>
+    <div><strong>Altitude :</strong> <span id="satAlt">--</span></div>
+    <div><strong>Vitesse :</strong> <span id="satSpeed">--</span></div>
+  </div>
+
+  <script>
+    Cesium.Ion.defaultAccessToken = ''; 
+
+    // Initialisation du globe avec paramètres visuels améliorés
+    const viewer = new Cesium.Viewer('cesiumContainer', {
+      baseLayerPicker: false,
+      geocoder: false,
+      homeButton: false,
+      sceneModePicker: false,
+      navigationHelpButton: false,
+      animation: false,
+      timeline: false,
+      fullscreenButton: false,
+      skyAtmosphere: new Cesium.SkyAtmosphere(), // Atmosphère terrestre bleue
+      globe: new Cesium.Globe()
+    });
+
+    // 1. Couche Satellite HD (Esri World Imagery) : continents & océans détaillés
+    const baseImagery = viewer.imageryLayers.addImageryProvider(
+      new Cesium.UrlTemplateImageryProvider({
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        maximumLevel: 19,
+        credit: 'Esri, Maxar, Earthstar Geographics'
+      })
+    );
+
+    // 2. Couche transparente de libellés (noms des océans, mers, continents et frontières)
+    const labelsImagery = viewer.imageryLayers.addImageryProvider(
+      new Cesium.UrlTemplateImageryProvider({
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        maximumLevel: 19
+      })
+    );
+
+    // Activer l'éclairage dynamique du soleil sur le globe
+    viewer.scene.globe.enableLighting = true;
+
+    let userPositionCartesian = null;
+
+    // Géolocalisation de l'utilisateur
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          userPositionCartesian = Cesium.Cartesian3.fromDegrees(lon, lat, 0);
+
+          document.getElementById('userPosText').textContent = `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+
+          viewer.entities.add({
+            name: "Ma position",
+            position: userPositionCartesian,
+            point: {
+              pixelSize: 14,
+              color: Cesium.Color.fromCssColorString('#38bdf8'),
+              outlineColor: Cesium.Color.WHITE,
+              outlineWidth: 2
+            },
+            label: {
+              text: "Vous êtes ici",
+              font: "13px sans-serif",
+              fillColor: Cesium.Color.WHITE,
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 3,
+              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+              verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+              pixelOffset: new Cesium.Cartesian2(0, -12)
+            }
+          });
+        },
+        () => {
+          document.getElementById('userPosText').textContent = "Non autorisée ou indisponible";
+        }
+      );
+    }
+
+    document.getElementById('locateBtn').onclick = () => {
+      if (userPositionCartesian) {
+        viewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(
+            Cesium.Math.toDegrees(Cesium.Cartographic.fromCartesian(userPositionCartesian).longitude),
+            Cesium.Math.toDegrees(Cesium.Cartographic.fromCartesian(userPositionCartesian).latitude),
+            3500000
+          )
+        });
+      }
+    };
+
+    // Données TLE des satellites
+    const satellitesData = [
+      {
+        name: "ISS (ZARYA)",
+        line1: "1 25544U 98067A   24080.52981481  .00014872  00000-0  26656-3 0  9993",
+        line2: "2 25544  51.6416 290.4143 0004543 125.7538 316.4891 15.49842526444078",
+        color: Cesium.Color.LIME
+      },
+      {
+        name: "HUBBLE (HST)",
+        line1: "1 20580U 90037B   24080.51868056  .00000845  00000-0  44053-4 0  9997",
+        line2: "2 20580  28.4691 199.1979 0002871 289.4442  70.5901 15.09347898864756",
+        color: Cesium.Color.YELLOW
+      },
+      {
+        name: "NOAA 15",
+        line1: "1 25338U 98030A   24080.51736111  .00000098  00000-0  68478-4 0  9998",
+        line2: "2 25338  98.7180 148.8824 0011504  77.2941 283.0012 14.26002157342618",
+        color: Cesium.Color.CYAN
+      }
+    ];
+
+    const satEntities = satellitesData.map((sat) => {
+      const satrec = satellite.twoline2satrec(sat.line1, sat.line2);
+      
+      const entity = viewer.entities.add({
+        name: sat.name,
+        position: new Cesium.CallbackProperty(() => {
+          const now = new Date();
+          const posVel = satellite.propagate(satrec, now);
+          if (!posVel.position) return Cesium.Cartesian3.ZERO;
+
+          const gmst = satellite.gstime(now);
+          const geodetic = satellite.eciToGeodetic(posVel.position, gmst);
+          return Cesium.Cartesian3.fromRadians(geodetic.longitude, geodetic.latitude, geodetic.height * 1000);
+        }, false),
+        point: {
+          pixelSize: 10,
+          color: sat.color,
+          outlineColor: Cesium.Color.WHITE,
+          outlineWidth: 1
+        },
+        label: {
+          text: sat.name,
+          font: "11px sans-serif",
+          fillColor: sat.color,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: new Cesium.Cartesian2(0, 14)
+        }
+      });
+
+      return { ...sat, satrec, entity };
+    });
+
+    // Télémétrie en temps réel pour l'ISS
+    const iss = satEntities[0];
+    viewer.clock.onTick.addEventListener(() => {
+      const now = new Date();
+      const posVel = satellite.propagate(iss.satrec, now);
+
+      if (posVel.position && posVel.velocity) {
+        const gmst = satellite.gstime(now);
+        const geodetic = satellite.eciToGeodetic(posVel.position, gmst);
+
+        const lat = Cesium.Math.toDegrees(geodetic.latitude).toFixed(2);
+        const lon = Cesium.Math.toDegrees(geodetic.longitude).toFixed(2);
+        const alt = Math.round(geodetic.height);
+        
+        const vel = posVel.velocity;
+        const speedKmH = Math.round(Math.sqrt(vel.x**2 + vel.y**2 + vel.z**2) * 3600);
+
+        document.getElementById('satCoords').textContent = `${lat}°, ${lon}°`;
+        document.getElementById('satAlt').textContent = `${alt} km`;
+        document.getElementById('satSpeed').textContent = `${speedKmH.toLocaleString()} km/h`;
+      }
+    });
+
+    // Altitude de départ
+    viewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(2.35, 48.85, 22000000)
+    });
+  </script>
+</body>
+</html>
