@@ -134,10 +134,12 @@
     <div class="form-group">
       <label for="groupSelect">Groupe CelesTrak</label>
       <select id="groupSelect">
+        <!-- Ajoute cette ligne en premier -->
+        <option value="active">Tous les satellites actifs (~10 000+)</option>
+        <option value="starlink">Constellation Starlink seule (~6 000+)</option>
         <option value="stations">Stations Spatiales (ISS, Tiangong...)</option>
-        <option value="weather">Météo (NOAA, GOES, MetOp...)</option>
-        <option value="gps-ops">GPS (Constellation opérationnelle)</option>
-        <option value="starlink">Starlink (Constellation complète)</option>
+        <option value="weather">Satellites Météo</option>
+        <option value="gps-ops">Satellites GPS</option>
       </select>
     </div>
 
