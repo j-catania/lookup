@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Look Up — Surveillance Aérienne & Spatiale 3D</title>
 
-  <!-- Tailwind CSS pour une interface soignée -->
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <!-- CesiumJS 3D Engine -->
@@ -23,7 +23,7 @@
 
     * {
       box-sizing: border-box;
-      user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
     body, html {
       width: 100%;
@@ -46,11 +46,9 @@
     .mono-num {
       font-family: 'JetBrains Mono', monospace;
     }
-    /* Masquer le branding Cesium par défaut */
     .cesium-widget-credits {
       display: none !important;
     }
-    /* Scrollbar discrète */
     ::-webkit-scrollbar {
       width: 4px;
     }
@@ -58,13 +56,11 @@
       background: #374151;
       border-radius: 4px;
     }
-    /* Animation pulse */
-    @keyframes pulseGlow {
-      0%, 100% { opacity: 0.8; transform: scale(1); }
-      50% { opacity: 1; transform: scale(1.15); }
-    }
-    .pulse-hud {
-      animation: pulseGlow 2s infinite ease-in-out;
+    /* Glow et transitions douces */
+    .hud-backdrop {
+      background: rgba(3, 7, 18, 0.88);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
     }
   </style>
 </head>
@@ -73,136 +69,189 @@
   <!-- Conteneur 3D Cesium -->
   <div id="cesiumContainer"></div>
 
+  <!-- Overlay d'arrière-plan pour mobile quand le HUD est ouvert -->
+  <div id="mobileBackdrop" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-20 hidden md:hidden transition-opacity"></div>
+
   <!-- Barre Supérieure (Header & Recherche Globale) -->
-  <header class="absolute top-4 left-4 right-4 z-20 flex flex-wrap items-center justify-between gap-3 pointer-events-none">
+  <header class="absolute top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 z-20 flex flex-wrap items-center justify-between gap-2.5 pointer-events-none">
+    
     <!-- Logo & Titre -->
-    <div class="pointer-events-auto flex items-center gap-3 bg-gray-900/85 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-gray-700/60 shadow-2xl">
-      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
-        <i class="ph-bold ph-globe-hemisphere-east text-xl"></i>
+    <div class="pointer-events-auto flex items-center gap-2.5 bg-gray-950/85 backdrop-blur-md px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-2xl border border-gray-800 shadow-2xl">
+      <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
+        <i class="ph-bold ph-globe-hemisphere-east text-lg sm:text-xl"></i>
       </div>
       <div>
-        <h1 class="text-sm font-bold tracking-wider uppercase text-cyan-400 flex items-center gap-1.5">
-          Look Up <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">ORBITAL 3D</span>
+        <h1 class="text-xs sm:text-sm font-bold tracking-wider uppercase text-cyan-400 flex items-center gap-1.5">
+          Look Up <span class="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">3D</span>
         </h1>
-        <p class="text-[11px] text-gray-400">Surveillance Aérienne & Spatiale</p>
+        <p id="i18nSubtitle" class="text-[10px] sm:text-[11px] text-gray-400">Surveillance Aérienne & Spatiale</p>
       </div>
     </div>
 
-    <!-- Barre de Recherche Universelle & Position -->
-    <div class="pointer-events-auto flex items-center gap-2 bg-gray-900/85 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-gray-700/60 shadow-2xl">
-      <i class="ph ph-magnifying-glass text-gray-400 text-lg ml-1"></i>
-      <input type="text" id="globalSearch" placeholder="Rechercher (ISS, Starlink, Air France, NEO...)" 
-             class="bg-transparent text-xs text-white placeholder-gray-500 w-48 sm:w-64 focus:outline-none">
+    <!-- Outils : Recherche, Position, Switch Langue & Toggle Menu -->
+    <div class="pointer-events-auto flex items-center gap-1.5 sm:gap-2 bg-gray-950/85 backdrop-blur-md p-1.5 sm:px-3 sm:py-1.5 rounded-2xl border border-gray-800 shadow-2xl">
+      <!-- Champ Recherche -->
+      <div class="flex items-center gap-1.5 px-2 py-1 rounded-xl bg-gray-900/60 border border-gray-800/80">
+        <i class="ph ph-magnifying-glass text-gray-400 text-base"></i>
+        <input type="text" id="globalSearch" placeholder="Rechercher (ISS, Air France...)" 
+               class="bg-transparent text-xs text-white placeholder-gray-500 w-28 sm:w-56 focus:outline-none">
+      </div>
+
+      <!-- Bouton Ma Position -->
       <button id="myLocationBtn" title="Recentrer sur ma position" 
-              class="px-2.5 py-1.5 bg-blue-600/80 hover:bg-blue-600 text-white rounded-xl text-xs flex items-center gap-1.5 transition active:scale-95 shadow">
-        <i class="ph-bold ph-crosshair"></i>
-        <span class="hidden sm:inline">Ma Position</span>
+              class="p-2 sm:px-3 sm:py-1.5 bg-cyan-600/80 hover:bg-cyan-600 text-white rounded-xl text-xs flex items-center gap-1.5 transition active:scale-95 shadow">
+        <i class="ph-bold ph-crosshair text-sm"></i>
+        <span id="i18nMyPos" class="hidden md:inline">Ma Position</span>
       </button>
+
+      <!-- Sélecteur de Langue (Switch FR / EN) -->
+      <div class="flex items-center bg-gray-900/80 p-0.5 rounded-xl border border-gray-700/70" role="group" aria-label="Language Selector">
+        <button id="langFR" title="Français" 
+                class="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold transition bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+          <span class="text-sm">🇫🇷</span>
+          <span class="text-[10px] hidden sm:inline">FR</span>
+        </button>
+        <button id="langEN" title="English" 
+                class="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold transition text-gray-400 hover:text-white">
+          <span class="text-sm">🇬🇧</span>
+          <span class="text-[10px] hidden sm:inline">EN</span>
+        </button>
+      </div>
+
+      <!-- Bouton Toggle Menu Mobile / Desktop -->
       <button id="hudToggleBtn" title="Basculer le panneau de contrôle"
-              class="p-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-sm transition">
-        <i class="ph-bold ph-sliders"></i>
+              class="p-2 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl text-sm transition active:scale-95 border border-gray-700">
+        <i id="hudToggleIcon" class="ph-bold ph-sliders text-base"></i>
       </button>
     </div>
   </header>
 
-  <!-- Panneau Latéral Gauche : Contrôle des Couches & Filtres -->
-  <aside id="mainHUD" class="absolute top-20 left-4 z-20 w-80 max-h-[calc(100vh-6rem)] overflow-y-auto bg-gray-950/90 backdrop-blur-xl border border-gray-800 p-4 rounded-3xl shadow-2xl space-y-4 transition-all duration-300">
+  <!-- Panneau Latéral Gauche : Contrôle des Couches & Filtres (Tiroir Responsive) -->
+  <aside id="mainHUD" class="fixed md:absolute top-0 md:top-20 left-0 md:left-4 z-30 w-80 max-w-[85vw] h-full md:h-auto md:max-h-[calc(100vh-6.5rem)] overflow-y-auto hud-backdrop border-r md:border border-gray-800 p-4 md:rounded-3xl shadow-2xl space-y-4 transition-transform duration-300 ease-out transform -translate-x-full md:translate-x-0">
     
-    <!-- En-tête HUD -->
+    <!-- En-tête HUD Mobile -->
     <div class="flex items-center justify-between pb-2 border-b border-gray-800/80">
-      <span class="text-xs font-semibold uppercase text-gray-400 tracking-wider flex items-center gap-1.5">
-        <i class="ph-bold ph-stack"></i> Calques Détectés
-      </span>
-      <span id="totalVisibleCounter" class="text-xs font-bold text-cyan-400 mono-num">0 objets</span>
+      <div class="flex items-center gap-1.5">
+        <i class="ph-bold ph-stack text-cyan-400"></i>
+        <span id="i18nLayersDetected" class="text-xs font-semibold uppercase text-gray-300 tracking-wider">Calques Détectés</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="totalVisibleCounter" class="text-xs font-bold text-cyan-400 mono-num">0</span>
+        <!-- Bouton fermer sur mobile -->
+        <button id="closeHudMobileBtn" class="md:hidden text-gray-400 hover:text-white p-1 rounded-lg">
+          <i class="ph-bold ph-x text-base"></i>
+        </button>
+      </div>
     </div>
 
     <!-- 1. Couche Satellites -->
-    <div class="space-y-2 bg-gray-900/50 p-2.5 rounded-2xl border border-gray-800">
+    <div class="space-y-2 bg-gray-900/50 p-2.5 rounded-2xl border border-gray-800/80">
       <div class="flex items-center justify-between">
         <label class="flex items-center gap-2 cursor-pointer text-xs font-semibold text-emerald-300">
           <input type="checkbox" id="layerSatellites" checked class="accent-emerald-500 w-4 h-4 rounded">
-          <i class="ph-bold ph-broadcast text-emerald-400"></i> Satellites Actifs
+          <i class="ph-bold ph-broadcast text-emerald-400"></i>
+          <span id="i18nSatLayer">Satellites Actifs</span>
         </label>
         <span id="satCountBadge" class="text-[10px] mono-num px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/60">0</span>
       </div>
-      <select id="satGroupSelect" class="w-full bg-gray-950 text-[11px] text-gray-300 border border-gray-700 rounded-xl px-2 py-1.5 focus:border-emerald-500 focus:outline-none">
-        <option value="stations">Stations Spatiales (ISS, Tiangong...)</option>
-        <option value="weather">Météo & Climat (NOAA, MetOp)</option>
-        <option value="gps-ops">Constellations GPS & Nav</option>
-        <option value="starlink">Starlink (Extrait actif)</option>
-        <option value="active">Tous les actifs majeurs (~2000)</option>
+      <select id="satGroupSelect" class="w-full bg-gray-950 text-[11px] text-gray-300 border border-gray-700/80 rounded-xl px-2 py-1.5 focus:border-emerald-500 focus:outline-none">
+        <option value="stations" id="optStations">Stations Spatiales (ISS, Tiangong...)</option>
+        <option value="weather" id="optWeather">Météo & Climat (NOAA, MetOp)</option>
+        <option value="gps-ops" id="optGPS">Constellations GPS & Nav</option>
+        <option value="starlink" id="optStarlink">Starlink (Constellation)</option>
+        <option value="active" id="optActive">Tous les satellites actifs (~2 000+)</option>
       </select>
     </div>
 
     <!-- 2. Couche Débris Spatiaux & Fusées -->
-    <div class="space-y-2 bg-gray-900/50 p-2.5 rounded-2xl border border-gray-800">
+    <div class="space-y-2 bg-gray-900/50 p-2.5 rounded-2xl border border-gray-800/80">
       <div class="flex items-center justify-between">
         <label class="flex items-center gap-2 cursor-pointer text-xs font-semibold text-red-400">
           <input type="checkbox" id="layerDebris" checked class="accent-red-500 w-4 h-4 rounded">
-          <i class="ph-bold ph-warning-octagon text-red-400"></i> Débris & Étages Fusées
+          <i class="ph-bold ph-warning-octagon text-red-400"></i>
+          <span id="i18nDebrisLayer">Débris & Étages Fusées</span>
         </label>
         <span id="debrisCountBadge" class="text-[10px] mono-num px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-800/60">0</span>
       </div>
-      <p class="text-[10px] text-gray-500">Corps de fusées et fragments orbitaux historiques en orbite basse.</p>
+      <p id="i18nDebrisDesc" class="text-[10px] text-gray-400">Corps de fusées et fragments orbitaux historiques en orbite basse.</p>
     </div>
 
     <!-- 3. Couche Trafic Aérien -->
-    <div class="space-y-2 bg-gray-900/50 p-2.5 rounded-2xl border border-gray-800">
+    <div class="space-y-2 bg-gray-900/50 p-2.5 rounded-2xl border border-gray-800/80">
       <div class="flex items-center justify-between">
         <label class="flex items-center gap-2 cursor-pointer text-xs font-semibold text-amber-300">
           <input type="checkbox" id="layerAviation" checked class="accent-amber-500 w-4 h-4 rounded">
-          <i class="ph-bold ph-airplane-tilt text-amber-400"></i> Trafic Aérien (ADS-B)
+          <i class="ph-bold ph-airplane-tilt text-amber-400"></i>
+          <span id="i18nAviationLayer">Trafic Aérien (ADS-B)</span>
         </label>
         <span id="aviationCountBadge" class="text-[10px] mono-num px-1.5 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-800/60">0</span>
       </div>
       <div class="flex items-center justify-between text-[11px] text-gray-400">
-        <span>Vols civils & long-courriers</span>
-        <button id="refreshPlanesBtn" title="Actualiser OpenSky" class="hover:text-amber-300"><i class="ph ph-arrows-clockwise text-xs"></i></button>
+        <span id="i18nAviationDesc">Vols civils & long-courriers</span>
+        <button id="refreshPlanesBtn" title="Actualiser OpenSky" class="hover:text-amber-300 p-1">
+          <i class="ph ph-arrows-clockwise text-xs"></i>
+        </button>
       </div>
     </div>
 
     <!-- 4. Couche Ballons Stratosphériques -->
-    <div class="space-y-2 bg-gray-900/50 p-2.5 rounded-2xl border border-gray-800">
+    <div class="space-y-2 bg-gray-900/50 p-2.5 rounded-2xl border border-gray-800/80">
       <div class="flex items-center justify-between">
         <label class="flex items-center gap-2 cursor-pointer text-xs font-semibold text-fuchsia-300">
           <input type="checkbox" id="layerBalloons" checked class="accent-fuchsia-500 w-4 h-4 rounded">
-          <i class="ph-bold ph-parachute text-fuchsia-400"></i> Ballons Stratosphériques
+          <i class="ph-bold ph-parachute text-fuchsia-400"></i>
+          <span id="i18nBalloonsLayer">Ballons Stratosphériques</span>
         </label>
         <span id="balloonCountBadge" class="text-[10px] mono-num px-1.5 py-0.5 rounded bg-fuchsia-950 text-fuchsia-400 border border-fuchsia-800/60">0</span>
       </div>
-      <p class="text-[10px] text-gray-500">Sondes météo & ballons haute altitude (15 000 m - 35 000 m).</p>
+      <p id="i18nBalloonsDesc" class="text-[10px] text-gray-400">Sondes météo & ballons haute altitude (15 km - 35 km).</p>
     </div>
 
     <!-- 5. Couche Astéroïdes Géocroiseurs (NEO) -->
-    <div class="space-y-2 bg-gray-900/50 p-2.5 rounded-2xl border border-gray-800">
+    <div class="space-y-2 bg-gray-900/50 p-2.5 rounded-2xl border border-gray-800/80">
       <div class="flex items-center justify-between">
         <label class="flex items-center gap-2 cursor-pointer text-xs font-semibold text-purple-300">
           <input type="checkbox" id="layerAsteroids" checked class="accent-purple-500 w-4 h-4 rounded">
-          <i class="ph-bold ph-meteor text-purple-400"></i> Astéroïdes Proches (NEO)
+          <i class="ph-bold ph-meteor text-purple-400"></i>
+          <span id="i18nAsteroidsLayer">Astéroïdes Proches (NEO)</span>
         </label>
         <span id="neoCountBadge" class="text-[10px] mono-num px-1.5 py-0.5 rounded bg-purple-950 text-purple-400 border border-purple-800/60">0</span>
       </div>
-      <p class="text-[10px] text-gray-500">Trajectoires et passages d'astéroïdes suivis par la NASA/CNEOS.</p>
+      <p id="i18nAsteroidsDesc" class="text-[10px] text-gray-400">Trajectoires et passages d'astéroïdes suivis par la NASA/CNEOS.</p>
     </div>
 
     <!-- 6. Nuages Météo Temps Réel -->
-    <div class="flex items-center justify-between bg-gray-900/50 p-2.5 rounded-2xl border border-gray-800">
+    <div class="flex items-center justify-between bg-gray-900/50 p-2.5 rounded-2xl border border-gray-800/80">
       <label class="flex items-center gap-2 cursor-pointer text-xs font-semibold text-blue-300">
         <input type="checkbox" id="layerClouds" checked class="accent-blue-500 w-4 h-4 rounded">
-        <i class="ph-bold ph-cloud text-blue-400"></i> Nébulosité Météo
+        <i class="ph-bold ph-cloud text-blue-400"></i>
+        <span id="i18nCloudsLayer">Nébulosité Météo</span>
       </label>
       <span class="text-[10px] text-blue-400 px-1.5 py-0.5 rounded bg-blue-950 border border-blue-800/60">RainViewer</span>
     </div>
 
     <!-- Statut Système & Aide -->
-    <div class="pt-2 text-[10px] text-gray-500 border-t border-gray-800 flex justify-between">
-      <span id="engineStatus"><i class="ph-fill ph-circle text-emerald-500 mr-1 text-[8px]"></i>Moteur 3D actif</span>
-      <span>Clic = inspection</span>
+    <div class="pt-2 text-[10px] text-gray-400 border-t border-gray-800 flex justify-between">
+      <span id="engineStatus"><i class="ph-fill ph-circle text-emerald-500 mr-1 text-[8px]"></i><span id="i18nEngineActive">Moteur 3D actif</span></span>
+      <span id="i18nClickInspect">Clic = inspection</span>
+    </div>
+
+    <!-- Footer personnalisé en bas du menu -->
+    <div class="pt-3 border-t border-gray-800/80 text-center">
+      <p class="text-[11px] text-gray-400 flex items-center justify-center gap-1">
+        <span id="i18nMadeWith">made with</span>
+        <span class="text-rose-500 animate-pulse text-xs">❤️</span>
+        <span>by</span>
+        <a href="https://jcatania.io" target="_blank" rel="noopener noreferrer" 
+           class="text-cyan-400 hover:text-cyan-300 font-medium underline underline-offset-2 transition">
+          j-catania
+        </a>
+      </p>
     </div>
   </aside>
 
-  <!-- Panneau Latéral Droit : Télémétrie & Détails de l'Objet Sélectionné -->
-  <section id="telemetryCard" class="absolute bottom-6 right-4 z-20 w-80 sm:w-96 bg-gray-950/90 backdrop-blur-xl border border-gray-800 p-4 rounded-3xl shadow-2xl transition-all duration-300 hidden">
+  <!-- Panneau Télémétrie / Détails (Responsive Bottom / Right) -->
+  <section id="telemetryCard" class="absolute bottom-4 left-3 right-3 sm:left-auto sm:right-4 z-20 sm:w-96 hud-backdrop border border-gray-800 p-4 rounded-3xl shadow-2xl transition-all duration-300 hidden">
     <!-- Header Carte -->
     <div class="flex items-start justify-between pb-3 border-b border-gray-800">
       <div class="flex items-center gap-2.5">
@@ -211,7 +260,7 @@
         </div>
         <div>
           <span id="objCategory" class="text-[10px] font-bold tracking-widest uppercase text-cyan-400">SATELLITE</span>
-          <h3 id="objTitle" class="text-sm font-bold text-white truncate max-w-[200px]">ISS (ZARYA)</h3>
+          <h3 id="objTitle" class="text-sm font-bold text-white truncate max-w-[210px]">ISS (ZARYA)</h3>
         </div>
       </div>
       <button id="closeTelemetryBtn" class="text-gray-400 hover:text-white p-1 rounded-lg">
@@ -222,19 +271,19 @@
     <!-- Grille de Télémétrie -->
     <div class="grid grid-cols-2 gap-2 my-3 text-xs">
       <div class="bg-gray-900/60 p-2 rounded-xl border border-gray-800/80">
-        <span class="text-[10px] text-gray-400 block mb-0.5">Latitude</span>
+        <span id="i18nTelLat" class="text-[10px] text-gray-400 block mb-0.5">Latitude</span>
         <span id="telLat" class="mono-num font-semibold text-white">--</span>
       </div>
       <div class="bg-gray-900/60 p-2 rounded-xl border border-gray-800/80">
-        <span class="text-[10px] text-gray-400 block mb-0.5">Longitude</span>
+        <span id="i18nTelLon" class="text-[10px] text-gray-400 block mb-0.5">Longitude</span>
         <span id="telLon" class="mono-num font-semibold text-white">--</span>
       </div>
       <div class="bg-gray-900/60 p-2 rounded-xl border border-gray-800/80">
-        <span class="text-[10px] text-gray-400 block mb-0.5">Altitude</span>
+        <span id="i18nTelAlt" class="text-[10px] text-gray-400 block mb-0.5">Altitude</span>
         <span id="telAlt" class="mono-num font-semibold text-cyan-400">--</span>
       </div>
       <div class="bg-gray-900/60 p-2 rounded-xl border border-gray-800/80">
-        <span class="text-[10px] text-gray-400 block mb-0.5">Vitesse</span>
+        <span id="i18nTelSpeed" class="text-[10px] text-gray-400 block mb-0.5">Vitesse</span>
         <span id="telSpeed" class="mono-num font-semibold text-emerald-400">--</span>
       </div>
     </div>
@@ -242,36 +291,200 @@
     <!-- Métadonnées Supplémentaires -->
     <div class="bg-gray-900/40 p-2.5 rounded-xl border border-gray-800/80 text-[11px] space-y-1 mb-3">
       <div class="flex justify-between">
-        <span class="text-gray-400">Origine / Opérateur :</span>
+        <span id="i18nTelOrigin" class="text-gray-400">Origine / Opérateur :</span>
         <span id="telOrigin" class="text-gray-200 font-medium">International</span>
       </div>
       <div class="flex justify-between">
-        <span class="text-gray-400">Détails / Cap :</span>
+        <span id="i18nTelExtra" class="text-gray-400">Détails / Cap :</span>
         <span id="telExtra" class="text-gray-200 mono-num">--</span>
       </div>
     </div>
 
     <!-- Actions -->
     <div class="flex gap-2">
-      <button id="trackObjectBtn" class="flex-1 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 shadow transition">
-        <i class="ph-bold ph-crosshair-simple"></i> Suivre la caméra
+      <button id="trackObjectBtn" class="flex-1 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 shadow transition active:scale-95">
+        <i class="ph-bold ph-crosshair-simple"></i>
+        <span id="i18nTrackCamera">Suivre la caméra</span>
       </button>
-      <button id="closeFocusBtn" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs transition">
-        Vue Globale
+      <button id="closeFocusBtn" class="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs transition active:scale-95">
+        <span id="i18nGlobalView">Vue Globale</span>
       </button>
     </div>
   </section>
 
   <!-- Notification Toast -->
-  <div id="toast" class="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 bg-gray-900/90 text-white text-xs px-4 py-2 rounded-2xl border border-gray-700 shadow-xl opacity-0 transition-opacity pointer-events-none">
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-gray-950/95 text-white text-xs px-4 py-2.5 rounded-2xl border border-gray-700 shadow-2xl opacity-0 transition-opacity pointer-events-none text-center">
     Message
   </div>
 
   <script>
-    // Configuration Cesium : Pas de token Ion requis pour cette architecture
+    // -------------------------------------------------------------
+    // GESTION DU MULTILINGUE (FRANÇAIS / ANGLAIS)
+    // -------------------------------------------------------------
+    const i18n = {
+      fr: {
+        subtitle: "Surveillance Aérienne & Spatiale",
+        searchPlaceholder: "Rechercher (ISS, Starlink, Air France...)",
+        myPos: "Ma Position",
+        layersDetected: "Calques Détectés",
+        objectsUnit: "objets",
+        satLayer: "Satellites Actifs",
+        optStations: "Stations Spatiales (ISS, Tiangong...)",
+        optWeather: "Météo & Climat (NOAA, MetOp)",
+        optGPS: "Constellations GPS & Nav",
+        optStarlink: "Starlink (Constellation)",
+        optActive: "Tous les satellites actifs (~2 000+)",
+        debrisLayer: "Débris & Étages Fusées",
+        debrisDesc: "Corps de fusées et fragments orbitaux historiques en orbite basse.",
+        aviationLayer: "Trafic Aérien (ADS-B)",
+        aviationDesc: "Vols civils & long-courriers",
+        balloonsLayer: "Ballons Stratosphériques",
+        balloonsDesc: "Sondes météo & ballons haute altitude (15 km - 35 km).",
+        asteroidsLayer: "Astéroïdes Proches (NEO)",
+        asteroidsDesc: "Trajectoires et passages d'astéroïdes suivis par la NASA/CNEOS.",
+        cloudsLayer: "Nébulosité Météo",
+        engineActive: "Moteur 3D actif",
+        clickInspect: "Clic = inspection",
+        madeWith: "made with",
+        telLat: "Latitude",
+        telLon: "Longitude",
+        telAlt: "Altitude",
+        telSpeed: "Vitesse",
+        telOrigin: "Origine / Opérateur :",
+        telExtra: "Détails / Cap :",
+        trackCamera: "Suivre la caméra",
+        globalView: "Vue Globale",
+        toastSatsSynced: "satellites synchronisés",
+        toastFlightRefresh: "Actualisation des vols civils...",
+        toastLocAvailable: "Votre position a été géolocalisée",
+        toastLocBlocked: "Position non disponible ou bloquée",
+        toastLockCamera: "Verrouillage caméra sur :",
+        catSat: "SATELLITE ACTIF",
+        catDebris: "DÉBRIS SPATIAL",
+        catAircraft: "AVIATION CIVILE",
+        catBalloon: "BALLON STRATOSPHÉRIQUE",
+        catAsteroid: "ASTÉROÏDE GÉOCROISEUR (NEO)",
+        debrisOrigin: "Débris Non Contrôlé",
+        debrisExtra: "Risque de collision suivi NORAD",
+        balloonOrigin: "Service Météorologique",
+        asteroidOrigin: "Ceinture d'Astéroïdes / NASA CNEOS"
+      },
+      en: {
+        subtitle: "Aerial & Orbital Tracking 3D",
+        searchPlaceholder: "Search (ISS, Starlink, United, NEO...)",
+        myPos: "My Location",
+        layersDetected: "Detected Layers",
+        objectsUnit: "objects",
+        satLayer: "Active Satellites",
+        optStations: "Space Stations (ISS, Tiangong...)",
+        optWeather: "Weather & Climate (NOAA, MetOp)",
+        optGPS: "GPS & Nav Constellations",
+        optStarlink: "Starlink (Constellation)",
+        optActive: "All Active Satellites (~2,000+)",
+        debrisLayer: "Space Debris & Rocket Stages",
+        debrisDesc: "Historical rocket bodies & orbital fragments in low Earth orbit.",
+        aviationLayer: "Air Traffic (ADS-B)",
+        aviationDesc: "Commercial & long-haul flights",
+        balloonsLayer: "Stratospheric Balloons",
+        balloonsDesc: "Weather sondes & high-altitude balloons (15 km - 35 km).",
+        asteroidsLayer: "Near-Earth Asteroids (NEO)",
+        asteroidsDesc: "Asteroid trajectories and flybys tracked by NASA/CNEOS.",
+        cloudsLayer: "Weather Cloud Cover",
+        engineActive: "3D Engine Active",
+        clickInspect: "Click = inspect",
+        madeWith: "made with",
+        telLat: "Latitude",
+        telLon: "Longitude",
+        telAlt: "Altitude",
+        telSpeed: "Speed",
+        telOrigin: "Origin / Operator:",
+        telExtra: "Details / Heading:",
+        trackCamera: "Track Camera",
+        globalView: "Global View",
+        toastSatsSynced: "satellites synced",
+        toastFlightRefresh: "Updating commercial flights...",
+        toastLocAvailable: "Your location was acquired",
+        toastLocBlocked: "Location not available or denied",
+        toastLockCamera: "Camera locked onto:",
+        catSat: "ACTIVE SATELLITE",
+        catDebris: "SPACE DEBRIS",
+        catAircraft: "COMMERCIAL AIRCRAFT",
+        catBalloon: "STRATOSPHERIC BALLOON",
+        catAsteroid: "NEAR-EARTH ASTEROID (NEO)",
+        debrisOrigin: "Uncontrolled Debris",
+        debrisExtra: "Tracked collision risk NORAD",
+        balloonOrigin: "Meteorological Service",
+        asteroidOrigin: "Asteroid Belt / NASA CNEOS"
+      }
+    };
+
+    let currentLang = localStorage.getItem('lookup_lang') || 'fr';
+
+    function setLanguage(lang) {
+      currentLang = lang;
+      localStorage.setItem('lookup_lang', lang);
+      const t = i18n[lang];
+
+      // Mise à jour visuelle des boutons du commutateur de langue
+      const btnFR = document.getElementById('langFR');
+      const btnEN = document.getElementById('langEN');
+      if (lang === 'fr') {
+        btnFR.className = "flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold transition bg-cyan-500/20 text-cyan-300 border border-cyan-500/40";
+        btnEN.className = "flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold transition text-gray-400 hover:text-white";
+        document.documentElement.lang = 'fr';
+      } else {
+        btnEN.className = "flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold transition bg-cyan-500/20 text-cyan-300 border border-cyan-500/40";
+        btnFR.className = "flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold transition text-gray-400 hover:text-white";
+        document.documentElement.lang = 'en';
+      }
+
+      // Éléments d'interface
+      document.getElementById('i18nSubtitle').textContent = t.subtitle;
+      document.getElementById('globalSearch').placeholder = t.searchPlaceholder;
+      document.getElementById('i18nMyPos').textContent = t.myPos;
+      document.getElementById('i18nLayersDetected').textContent = t.layersDetected;
+      document.getElementById('i18nSatLayer').textContent = t.satLayer;
+      document.getElementById('optStations').textContent = t.optStations;
+      document.getElementById('optWeather').textContent = t.optWeather;
+      document.getElementById('optGPS').textContent = t.optGPS;
+      document.getElementById('optStarlink').textContent = t.optStarlink;
+      document.getElementById('optActive').textContent = t.optActive;
+      document.getElementById('i18nDebrisLayer').textContent = t.debrisLayer;
+      document.getElementById('i18nDebrisDesc').textContent = t.debrisDesc;
+      document.getElementById('i18nAviationLayer').textContent = t.aviationLayer;
+      document.getElementById('i18nAviationDesc').textContent = t.aviationDesc;
+      document.getElementById('i18nBalloonsLayer').textContent = t.balloonsLayer;
+      document.getElementById('i18nBalloonsDesc').textContent = t.balloonsDesc;
+      document.getElementById('i18nAsteroidsLayer').textContent = t.asteroidsLayer;
+      document.getElementById('i18nAsteroidsDesc').textContent = t.asteroidsDesc;
+      document.getElementById('i18nCloudsLayer').textContent = t.cloudsLayer;
+      document.getElementById('i18nEngineActive').textContent = t.engineActive;
+      document.getElementById('i18nClickInspect').textContent = t.clickInspect;
+      document.getElementById('i18nMadeWith').textContent = t.madeWith;
+      document.getElementById('i18nTelLat').textContent = t.telLat;
+      document.getElementById('i18nTelLon').textContent = t.telLon;
+      document.getElementById('i18nTelAlt').textContent = t.telAlt;
+      document.getElementById('i18nTelSpeed').textContent = t.telSpeed;
+      document.getElementById('i18nTelOrigin').textContent = t.telOrigin;
+      document.getElementById('i18nTelExtra').textContent = t.telExtra;
+      document.getElementById('i18nTrackCamera').textContent = t.trackCamera;
+      document.getElementById('i18nGlobalView').textContent = t.globalView;
+
+      // Actualiser le compteur et la télémétrie si affichée
+      updateVisibility();
+      if (state.selectedObject) {
+        updateTelemetryCard(state.selectedObject);
+      }
+    }
+
+    document.getElementById('langFR').addEventListener('click', () => setLanguage('fr'));
+    document.getElementById('langEN').addEventListener('click', () => setLanguage('en'));
+
+    // -------------------------------------------------------------
+    // INITIALISATION CESIUMJS (GLOBE 3D)
+    // -------------------------------------------------------------
     Cesium.Ion.defaultAccessToken = '';
 
-    // Initialisation du Viewer Cesium
     const viewer = new Cesium.Viewer('cesiumContainer', {
       baseLayerPicker: false,
       geocoder: false,
@@ -287,57 +500,101 @@
       globe: new Cesium.Globe()
     });
 
-    // Amélioration de l'atmosphère et de l'éclairage de jour/nuit
     viewer.scene.globe.enableLighting = true;
     viewer.scene.globe.depthTestAgainstTerrain = false;
 
-    // 1. Couche Satellite Haute Résolution (Esri World Imagery)
-    const esriImagery = viewer.imageryLayers.addImageryProvider(
+    // 1. Couche Satellite Esri World Imagery (HD)
+    viewer.imageryLayers.addImageryProvider(
       new Cesium.UrlTemplateImageryProvider({
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         maximumLevel: 19,
-        credit: 'Esri, Earthstar Geographics'
+        credit: 'Esri'
       })
     );
 
-    // 2. Couche Libellés & Frontières (Continents, Océans, Mers, Pays)
-    const esriLabels = viewer.imageryLayers.addImageryProvider(
+    // 2. Couche Libellés Esri (Continents, Mers, Frontières)
+    viewer.imageryLayers.addImageryProvider(
       new Cesium.UrlTemplateImageryProvider({
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
         maximumLevel: 19
       })
     );
 
-    // 3. Couche Nuages Météo en Temps Réel (RainViewer Radar/Satellite)
+    // 3. Couche Nuages Météo (RainViewer)
     let weatherLayer = null;
     async function initWeatherLayer() {
       try {
         const resp = await fetch('https://api.rainviewer.com/public/weather-maps.json');
         const data = await resp.json();
         if (data && data.satellite && data.satellite.infrared && data.satellite.infrared.length > 0) {
-          const latestInfrared = data.satellite.infrared[data.satellite.infrared.length - 1];
-          const cloudTileUrl = `https://tilecache.rainviewer.com${latestInfrared.path}/256/{z}/{x}/{y}/0/0_0.png`;
-
+          const latest = data.satellite.infrared[data.satellite.infrared.length - 1];
           weatherLayer = viewer.imageryLayers.addImageryProvider(
             new Cesium.UrlTemplateImageryProvider({
-              url: cloudTileUrl,
+              url: `https://tilecache.rainviewer.com${latest.path}/256/{z}/{x}/{y}/0/0_0.png`,
               maximumLevel: 6
             })
           );
-          weatherLayer.alpha = 0.55; // Semi-transparent pour laisser voir les continents
+          weatherLayer.alpha = 0.55;
         }
       } catch (e) {
-        console.warn("Impossible de charger la couche nébulosité RainViewer :", e);
+        console.warn("RainViewer unavailable:", e);
       }
     }
     initWeatherLayer();
 
     // -------------------------------------------------------------
-    // GESTION DES COLLECTIONS HAUTES PERFORMANCES (GPU Points)
+    // GESTION DU TIROIR RESPONSIVE (MOBILE & DESKTOP)
+    // -------------------------------------------------------------
+    const hud = document.getElementById('mainHUD');
+    const mobileBackdrop = document.getElementById('mobileBackdrop');
+    let isHudOpen = window.innerWidth >= 768; // Ouvert par défaut sur desktop
+
+    function toggleHUD(forceState) {
+      if (typeof forceState === 'boolean') {
+        isHudOpen = forceState;
+      } else {
+        isHudOpen = !isHudOpen;
+      }
+
+      if (window.innerWidth < 768) {
+        // Mode mobile : panneau tiroir avec backdrop
+        if (isHudOpen) {
+          hud.classList.remove('-translate-x-full');
+          mobileBackdrop.classList.remove('hidden');
+        } else {
+          hud.classList.add('-translate-x-full');
+          mobileBackdrop.classList.add('hidden');
+        }
+      } else {
+        // Mode desktop
+        hud.classList.remove('-translate-x-full');
+        mobileBackdrop.classList.add('hidden');
+        if (isHudOpen) {
+          hud.classList.remove('hidden');
+        } else {
+          hud.classList.toggle('hidden');
+        }
+      }
+    }
+
+    document.getElementById('hudToggleBtn').addEventListener('click', () => toggleHUD());
+    document.getElementById('closeHudMobileBtn').addEventListener('click', () => toggleHUD(false));
+    mobileBackdrop.addEventListener('click', () => toggleHUD(false));
+
+    window.addEventListener('resize', () => {
+      if (window.innerWidth >= 768) {
+        hud.classList.remove('-translate-x-full');
+        mobileBackdrop.classList.add('hidden');
+      } else if (!isHudOpen) {
+        hud.classList.add('-translate-x-full');
+      }
+    });
+
+    // -------------------------------------------------------------
+    // ÉTAT GLOBAL & COLLECTIONS GPU
     // -------------------------------------------------------------
     const pointCollection = viewer.scene.primitives.add(new Cesium.PointPrimitiveCollection());
 
-    // État global des couches
     const state = {
       satellites: [],
       debris: [],
@@ -349,7 +606,6 @@
       userLocation: null
     };
 
-    // Entité de repérage dynamique (Anneau & Label au-dessus de la sélection)
     const selectionMarker = viewer.entities.add({
       position: Cesium.Cartesian3.ZERO,
       label: {
@@ -373,9 +629,9 @@
     });
 
     // -------------------------------------------------------------
-    // COUCHE 1 : SATELLITES ACTIFS (CelesTrak SGP4)
+    // COUCHES DE DONNÉES
     // -------------------------------------------------------------
-    function parseTLE(text, category, defaultColor) {
+    function parseTLE(text, defaultCategory, defaultColor) {
       const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
       const objects = [];
       for (let i = 0; i < lines.length; i += 3) {
@@ -385,15 +641,15 @@
             objects.push({
               id: 'sat_' + Math.random().toString(36).substr(2, 9),
               type: 'satellite',
-              category: category,
+              category: defaultCategory,
               name: lines[i],
               satrec: satrec,
               color: defaultColor,
               visible: true,
               primitive: null,
               lat: 0, lon: 0, alt: 0, speed: 0,
-              origin: 'Orbite Terrestre',
-              extra: 'Propagé via SGP4'
+              origin: 'Low Earth Orbit',
+              extra: 'Propagated SGP4'
             });
           } catch (e) {}
         }
@@ -404,11 +660,10 @@
     async function loadSatellites(group) {
       try {
         const res = await fetch(`https://celestrak.org/NORAD/elements/gp.php?GROUP=${group}&FORMAT=tle`);
-        if (!res.ok) throw new Error("Erreur réseau CelesTrak");
+        if (!res.ok) throw new Error("CelesTrak error");
         const raw = await res.text();
-        const parsed = parseTLE(raw, 'Satellite Actif', Cesium.Color.fromCssColorString('#4ade80'));
+        const parsed = parseTLE(raw, 'satellite', Cesium.Color.fromCssColorString('#4ade80'));
 
-        // Supprimer les anciens satellites
         state.satellites.forEach(s => { if (s.primitive) pointCollection.remove(s.primitive); });
         state.satellites = parsed;
 
@@ -425,10 +680,10 @@
 
         document.getElementById('satCountBadge').textContent = state.satellites.length;
         updateVisibility();
-        showToast(`${state.satellites.length} satellites synchronisés`);
+        const t = i18n[currentLang];
+        showToast(`${state.satellites.length} ${t.toastSatsSynced}`);
       } catch (err) {
-        console.warn("Fallback satellites :", err);
-        // Fallback local essentiel (ISS, Hubble, Tiangong)
+        console.warn("Fallback CelesTrak satellites :", err);
         const fallbackTLE = `ISS (ZARYA)
 1 25544U 98067A   24080.52981481  .00014872  00000-0  26656-3 0  9993
 2 25544  51.6416 290.4143 0004543 125.7538 316.4891 15.49842526444078
@@ -438,7 +693,7 @@ TIANGONG
 HUBBLE SPACE TELESCOPE
 1 20580U 90037B   24080.51868056  .00000845  00000-0  44053-4 0  9997
 2 20580  28.4691 199.1979 0002871 289.4442  70.5901 15.09347898864756`;
-        state.satellites = parseTLE(fallbackTLE, 'Satellite Actif', Cesium.Color.fromCssColorString('#4ade80'));
+        state.satellites = parseTLE(fallbackTLE, 'satellite', Cesium.Color.fromCssColorString('#4ade80'));
         state.satellites.forEach(sat => {
           sat.primitive = pointCollection.add({
             position: Cesium.Cartesian3.ZERO,
@@ -448,18 +703,15 @@ HUBBLE SPACE TELESCOPE
           });
         });
         document.getElementById('satCountBadge').textContent = state.satellites.length;
+        updateVisibility();
       }
     }
 
-    // -------------------------------------------------------------
-    // COUCHE 2 : DÉBRIS SPATIAUX & RESTES DE FUSÉES (TLE Rouge)
-    // -------------------------------------------------------------
-    async function loadSpaceDebris() {
-      // Débris et corps de fusée historiques (Cosmos 2251, Fengyun 1C, étages Centaur / SL-8)
+    function loadSpaceDebris() {
       const debrisTLEs = [
         { name: "DEBRIS COSMOS 2251", l1: "1 34000U 93036APZ 24079.12345678 .00001234 00000-0 12345-3 0 9991", l2: "2 34000  74.0321 112.4512 0034120  45.1200 315.2100 14.120000001234" },
         { name: "FENGYUN 1C DEBRIS", l1: "1 30000U 99025AAA 24079.23456789 .00002345 00000-0 23456-3 0 9992", l2: "2 30000  98.6210 245.1200 0056120  89.4500 271.1200 13.920000002345" },
-        { name: "SL-16 R/B (FUSÉE ZENIT)", l1: "1 22803U 93059B   24080.34567890 .00000567 00000-0 34567-4 0 9993", l2: "2 22803  71.0123 310.4512 0012120 120.1200 240.4500 14.820000003456" },
+        { name: "SL-16 R/B (ZENIT ROCKET)", l1: "1 22803U 93059B   24080.34567890 .00000567 00000-0 34567-4 0 9993", l2: "2 22803  71.0123 310.4512 0012120 120.1200 240.4500 14.820000003456" },
         { name: "DELTA 1 R/B", l1: "1 08123U 75052B   24080.45678901 .00000123 00000-0 45678-4 0 9994", l2: "2 08123  35.2100 180.1200 0021120 210.4500 150.1200 14.520000004567" },
         { name: "ARIANE 4 R/B DEBRIS", l1: "1 23000U 94010B   24080.12121212 .00000987 00000-0 11223-3 0 9995", l2: "2 23000   7.0123  45.1200 0008120 300.1200  60.4500 15.120000005678" }
       ];
@@ -469,15 +721,15 @@ HUBBLE SPACE TELESCOPE
         const obj = {
           id: 'deb_' + Math.random().toString(36).substr(2, 9),
           type: 'debris',
-          category: 'Débris Spatial',
+          category: 'debris',
           name: d.name,
           satrec: satrec,
           color: Cesium.Color.fromCssColorString('#f87171'),
           visible: true,
           primitive: null,
           lat: 0, lon: 0, alt: 0, speed: 0,
-          origin: 'Débris Non Contrôlé',
-          extra: 'Risque de collision suivi NORAD'
+          origin: 'Debris Tracked',
+          extra: 'NORAD Catalog'
         };
 
         obj.primitive = pointCollection.add({
@@ -494,42 +746,36 @@ HUBBLE SPACE TELESCOPE
       document.getElementById('debrisCountBadge').textContent = state.debris.length;
     }
 
-    // -------------------------------------------------------------
-    // COUCHE 3 : TRAFIC AÉRIEN / AVIONS CIVILS (OpenSky ADS-B)
-    // -------------------------------------------------------------
     async function loadAviationTraffic() {
-      const aviationBadge = document.getElementById('aviationCountBadge');
-      aviationBadge.textContent = '...';
+      const badge = document.getElementById('aviationCountBadge');
+      badge.textContent = '...';
 
-      // Boîte englobante centrée sur l'Europe / Atlantique pour préserver les quotas de l'API
       const url = 'https://opensky-network.org/api/states/all?lamin=35&lomin=-10&lamax=58&lomax=25';
 
       try {
         const res = await fetch(url);
-        if (!res.ok) throw new Error("Limite de quota OpenSky");
+        if (!res.ok) throw new Error("OpenSky API limit");
         const data = await res.json();
-        
-        // Supprimer les anciens avions
+
         state.aircraft.forEach(p => { if (p.primitive) pointCollection.remove(p.primitive); });
         state.aircraft = [];
 
         if (data && data.states) {
-          // Filtrer les avions en vol avec position valide
-          const activeFlights = data.states.filter(s => s[5] !== null && s[6] !== null && !s[8]).slice(0, 400);
+          const activeFlights = data.states.filter(s => s[5] !== null && s[6] !== null && !s[8]).slice(0, 350);
 
           state.aircraft = activeFlights.map(flight => {
-            const callsign = (flight[1] || 'VOL INCONNU').trim();
-            const originCountry = flight[2] || 'Inconnu';
+            const callsign = (flight[1] || 'FLIGHT').trim();
+            const originCountry = flight[2] || 'International';
             const lon = flight[5];
             const lat = flight[6];
-            const baroAlt = flight[7] || 10000; // mètres
-            const velocity = flight[9] ? Math.round(flight[9] * 3.6) : 850; // km/h
+            const baroAlt = flight[7] || 10500;
+            const velocity = flight[9] ? Math.round(flight[9] * 3.6) : 850;
             const heading = flight[10] || 0;
 
             const planeObj = {
               id: 'plane_' + (flight[0] || Math.random()),
               type: 'aircraft',
-              category: 'Aviation Civile',
+              category: 'aircraft',
               name: callsign,
               lat: lat,
               lon: lon,
@@ -537,7 +783,7 @@ HUBBLE SPACE TELESCOPE
               speed: velocity,
               heading: heading,
               origin: originCountry,
-              extra: `Cap ${Math.round(heading)}° | ADS-B`,
+              extra: `HDG ${Math.round(heading)}° | ADS-B`,
               visible: true,
               color: Cesium.Color.fromCssColorString('#fbbf24')
             };
@@ -555,15 +801,14 @@ HUBBLE SPACE TELESCOPE
           });
         }
       } catch (err) {
-        console.warn("Simulation flux aviation (OpenSky indisponible) :", err.message);
+        console.warn("OpenSky offline, fallback active:", err.message);
         generateSimulatedAircraft();
       }
 
-      aviationBadge.textContent = state.aircraft.length;
+      badge.textContent = state.aircraft.length;
       updateVisibility();
     }
 
-    // Fallback dynamique : Génération de corridors aériens mondiaux réalistes
     function generateSimulatedAircraft() {
       state.aircraft.forEach(p => { if (p.primitive) pointCollection.remove(p.primitive); });
       state.aircraft = [];
@@ -574,28 +819,28 @@ HUBBLE SPACE TELESCOPE
         { name: "DLH400 (Lufthansa)", from: [8.68, 50.11], to: [-74.0, 40.71], country: "Germany" },
         { name: "UAE077 (Emirates)", from: [55.27, 25.20], to: [9.19, 45.46], country: "UAE" },
         { name: "QFA001 (Qantas)", from: [151.2, -33.8], to: [103.8, 1.35], country: "Australia" },
-        { name: "SIA308 (Singapore Air)", from: [103.8, 1.35], to: [-0.12, 51.5], country: "Singapore" }
+        { name: "UAL901 (United Airlines)", from: [-122.4, 37.7], to: [139.6, 35.6], country: "USA" }
       ];
 
-      for (let i = 0; i < 60; i++) {
+      for (let i = 0; i < 55; i++) {
         const route = majorRoutes[i % majorRoutes.length];
         const progress = Math.random();
-        const curLon = route.from[0] + (route.to[0] - route.from[0]) * progress + (Math.random() - 0.5) * 5;
-        const curLat = route.from[1] + (route.to[1] - route.from[1]) * progress + (Math.random() - 0.5) * 5;
-        const altMeters = 9000 + Math.random() * 3000;
+        const curLon = route.from[0] + (route.to[0] - route.from[0]) * progress + (Math.random() - 0.5) * 4;
+        const curLat = route.from[1] + (route.to[1] - route.from[1]) * progress + (Math.random() - 0.5) * 4;
+        const altMeters = 9500 + Math.random() * 2500;
 
         const planeObj = {
           id: 'plane_sim_' + i,
           type: 'aircraft',
-          category: 'Aviation Civile',
+          category: 'aircraft',
           name: `${route.name.split(' ')[0]}-${100 + i}`,
           lat: curLat,
           lon: curLon,
           alt: Math.round(altMeters / 1000),
-          speed: Math.round(800 + Math.random() * 120),
+          speed: Math.round(820 + Math.random() * 100),
           heading: 270,
           origin: route.country,
-          extra: `Altitude ${Math.round(altMeters)}m | Vol Régulier`,
+          extra: `Altitude ${Math.round(altMeters)}m | En Route`,
           visible: true,
           color: Cesium.Color.fromCssColorString('#fbbf24')
         };
@@ -613,16 +858,12 @@ HUBBLE SPACE TELESCOPE
       }
     }
 
-    // -------------------------------------------------------------
-    // COUCHE 4 : BALLONS STRATOSPHÉRIQUES (Sondes Météo 25-35 km)
-    // -------------------------------------------------------------
     function loadStratosphericBalloons() {
-      // Radiosondes météo représentatives de stations synoptiques
       const balloonSites = [
         { name: "BALLON METEO - TRAPPES (FR)", lon: 2.01, lat: 48.77, alt: 28400, asc: "+5.2 m/s" },
         { name: "NOAA BALLOON - BOULDER (US)", lon: -105.27, lat: 40.01, alt: 32100, asc: "+4.8 m/s" },
         { name: "DWD METEO - STUTTGART (DE)", lon: 9.20, lat: 48.77, alt: 24500, asc: "+5.5 m/s" },
-        { name: "JMA RADIOSONDE - TUKUBA (JP)", lon: 140.12, lat: 36.08, alt: 31200, asc: "+5.1 m/s" },
+        { name: "JMA RADIOSONDE - TSUKUBA (JP)", lon: 140.12, lat: 36.08, alt: 31200, asc: "+5.1 m/s" },
         { name: "MET OFFICE - LERWICK (UK)", lon: -1.18, lat: 60.15, alt: 22000, asc: "+4.9 m/s" },
         { name: "STRATO EXPERIMENT - ALICE SPRINGS", lon: 133.88, lat: -23.69, alt: 34500, asc: "+3.2 m/s" }
       ];
@@ -631,14 +872,14 @@ HUBBLE SPACE TELESCOPE
         const balloonObj = {
           id: 'balloon_' + idx,
           type: 'balloon',
-          category: 'Ballon Stratosphérique',
+          category: 'balloon',
           name: b.name,
           lat: b.lat,
           lon: b.lon,
           alt: Math.round(b.alt / 1000),
-          speed: 45, // Vitesse dérivante du vent en km/h
-          origin: "Service Météorologique",
-          extra: `Ascension ${b.asc} | Pression 12 hPa`,
+          speed: 45,
+          origin: "Meteo Service",
+          extra: `Ascension ${b.asc} | 12 hPa`,
           visible: true,
           color: Cesium.Color.fromCssColorString('#e879f9')
         };
@@ -658,11 +899,7 @@ HUBBLE SPACE TELESCOPE
       document.getElementById('balloonCountBadge').textContent = state.balloons.length;
     }
 
-    // -------------------------------------------------------------
-    // COUCHE 5 : ASTÉROÏDES GÉOCROISEURS (NASA NEO)
-    // -------------------------------------------------------------
     function loadNearEarthAsteroids() {
-      // Échantillon représentatif de NEOs récents suivis par la NASA
       const neoList = [
         { name: "2024 BX1 (Bolide)", distLD: 0.12, size: "1-2 m", speed: 52000, lon: 13.5, lat: 52.5, alt: 180000 },
         { name: "99942 APOPHIS", distLD: 8.2, size: "340 m", speed: 107000, lon: -45.0, lat: 10.0, alt: 420000 },
@@ -674,14 +911,14 @@ HUBBLE SPACE TELESCOPE
         const neoObj = {
           id: 'neo_' + idx,
           type: 'asteroid',
-          category: 'Astéroïde Géocroiseur (NEO)',
+          category: 'asteroid',
           name: a.name,
           lat: a.lat,
           lon: a.lon,
-          alt: a.alt, // Altitude orbitale en km
+          alt: a.alt,
           speed: a.speed,
-          origin: "Ceinture d'Astéroïdes / NASA CNEOS",
-          extra: `Taille : ${a.size} | Distance : ${a.distLD} LD`,
+          origin: "NASA CNEOS",
+          extra: `Size : ${a.size} | Dist : ${a.distLD} LD`,
           visible: true,
           color: Cesium.Color.fromCssColorString('#c084fc')
         };
@@ -702,13 +939,13 @@ HUBBLE SPACE TELESCOPE
     }
 
     // -------------------------------------------------------------
-    // CALCUL ET MISE À JOUR DES ORBITES SATELLITES & DÉBRIS
+    // CALCUL ORBITAL TEMPS RÉEL (SGP4)
     // -------------------------------------------------------------
     function updateOrbitalCalculations() {
       const now = new Date();
       const gmst = satellite.gstime(now);
 
-      // Calcul des satellites actifs
+      // Satellites
       state.satellites.forEach(sat => {
         if (!sat.visible || !sat.primitive) return;
         const posVel = satellite.propagate(sat.satrec, now);
@@ -731,7 +968,7 @@ HUBBLE SPACE TELESCOPE
         }
       });
 
-      // Calcul des débris spatiaux
+      // Débris
       state.debris.forEach(deb => {
         if (!deb.visible || !deb.primitive) return;
         const posVel = satellite.propagate(deb.satrec, now);
@@ -754,11 +991,10 @@ HUBBLE SPACE TELESCOPE
         }
       });
 
-      // Mise à jour de l'affichage de télémétrie en direct si un objet est inspecté
+      // Suivi et télémétrie de l'objet sélectionné
       if (state.selectedObject) {
         updateTelemetryCard(state.selectedObject);
 
-        // Si l'option de suivi de la caméra est activée
         if (state.trackingActive && state.selectedObject.primitive) {
           viewer.camera.lookAt(
             state.selectedObject.primitive.position,
@@ -769,7 +1005,7 @@ HUBBLE SPACE TELESCOPE
     }
 
     // -------------------------------------------------------------
-    // GÉOLOCALISATION UTILISATEUR
+    // GÉOLOCALISATION
     // -------------------------------------------------------------
     function setupUserGeolocation() {
       if ("geolocation" in navigator) {
@@ -781,7 +1017,7 @@ HUBBLE SPACE TELESCOPE
             };
 
             viewer.entities.add({
-              name: "Position Observateur",
+              name: "User Position",
               position: Cesium.Cartesian3.fromDegrees(state.userLocation.lon, state.userLocation.lat, 0),
               point: {
                 pixelSize: 14,
@@ -790,7 +1026,7 @@ HUBBLE SPACE TELESCOPE
                 outlineWidth: 3
               },
               label: {
-                text: "VOUS ÊTES ICI",
+                text: "VOUS ÊTES ICI / YOU ARE HERE",
                 font: '12px "JetBrains Mono", sans-serif',
                 fillColor: Cesium.Color.WHITE,
                 outlineColor: Cesium.Color.BLACK,
@@ -801,9 +1037,10 @@ HUBBLE SPACE TELESCOPE
               }
             });
 
-            showToast("Votre position a été géolocalisée");
+            const t = i18n[currentLang];
+            showToast(t.toastLocAvailable);
           },
-          (err) => console.log("Géolocalisation refusée ou indisponible.")
+          () => console.log("Geolocation denied or unavailable")
         );
       }
     }
@@ -818,49 +1055,45 @@ HUBBLE SPACE TELESCOPE
           )
         });
       } else {
-        showToast("Position non disponible ou bloquée");
+        const t = i18n[currentLang];
+        showToast(t.toastLocBlocked);
       }
     };
 
     // -------------------------------------------------------------
-    // GESTION DU CLIC & SÉLECTION D'OBJETS
+    // GESTION DU CLIC / TOUCH & SÉLECTION
     // -------------------------------------------------------------
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 
-    // Clic gauche avec zone de tolérance
     handler.setInputAction((click) => {
-      const picked = viewer.scene.pick(click.position, 8, 8);
+      const picked = viewer.scene.pick(click.position, 10, 10);
       if (Cesium.defined(picked) && picked.primitive && picked.id && picked.id.type) {
         selectObject(picked.id);
+        // Sur mobile, si le HUD est ouvert, on peut le fermer pour mieux voir
+        if (window.innerWidth < 768 && isHudOpen) {
+          toggleHUD(false);
+        }
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-    // Changement du pointeur de la souris lors du survol
     handler.setInputAction((movement) => {
       const picked = viewer.scene.pick(movement.endPosition, 6, 6);
-      if (Cesium.defined(picked) && picked.id && picked.id.type) {
-        viewer.canvas.style.cursor = 'pointer';
-      } else {
-        viewer.canvas.style.cursor = 'default';
-      }
+      viewer.canvas.style.cursor = (Cesium.defined(picked) && picked.id && picked.id.type) ? 'pointer' : 'default';
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
     function selectObject(obj) {
       state.selectedObject = obj;
-      state.trackingActive = false; // Ne pas forcer la caméra automatiquement
+      state.trackingActive = false;
 
-      // Afficher le panneau de télémétrie
       document.getElementById('telemetryCard').classList.remove('hidden');
 
-      // Icônes adaptées par type
-      const iconContainer = document.getElementById('objTypeIcon');
-      if (obj.type === 'satellite') iconContainer.innerHTML = '<i class="ph-bold ph-broadcast text-emerald-400"></i>';
-      else if (obj.type === 'debris') iconContainer.innerHTML = '<i class="ph-bold ph-warning-octagon text-red-400"></i>';
-      else if (obj.type === 'aircraft') iconContainer.innerHTML = '<i class="ph-bold ph-airplane-tilt text-amber-400"></i>';
-      else if (obj.type === 'balloon') iconContainer.innerHTML = '<i class="ph-bold ph-parachute text-fuchsia-400"></i>';
-      else if (obj.type === 'asteroid') iconContainer.innerHTML = '<i class="ph-bold ph-meteor text-purple-400"></i>';
+      const icon = document.getElementById('objTypeIcon');
+      if (obj.type === 'satellite') icon.innerHTML = '<i class="ph-bold ph-broadcast text-emerald-400"></i>';
+      else if (obj.type === 'debris') icon.innerHTML = '<i class="ph-bold ph-warning-octagon text-red-400"></i>';
+      else if (obj.type === 'aircraft') icon.innerHTML = '<i class="ph-bold ph-airplane-tilt text-amber-400"></i>';
+      else if (obj.type === 'balloon') icon.innerHTML = '<i class="ph-bold ph-parachute text-fuchsia-400"></i>';
+      else if (obj.type === 'asteroid') icon.innerHTML = '<i class="ph-bold ph-meteor text-purple-400"></i>';
 
-      // Marqueur Cesium 3D
       if (obj.primitive) {
         selectionMarker.position = obj.primitive.position;
         selectionMarker.label.text = obj.name;
@@ -872,29 +1105,48 @@ HUBBLE SPACE TELESCOPE
     }
 
     function updateTelemetryCard(obj) {
-      document.getElementById('objCategory').textContent = obj.category;
+      const t = i18n[currentLang];
+
+      let catName = t.catSat;
+      if (obj.type === 'debris') catName = t.catDebris;
+      else if (obj.type === 'aircraft') catName = t.catAircraft;
+      else if (obj.type === 'balloon') catName = t.catBalloon;
+      else if (obj.type === 'asteroid') catName = t.catAsteroid;
+
+      document.getElementById('objCategory').textContent = catName;
       document.getElementById('objTitle').textContent = obj.name;
       document.getElementById('telLat').textContent = `${obj.lat.toFixed(3)}°`;
       document.getElementById('telLon').textContent = `${obj.lon.toFixed(3)}°`;
       document.getElementById('telAlt').textContent = `${obj.alt.toLocaleString()} km`;
       document.getElementById('telSpeed').textContent = `${obj.speed.toLocaleString()} km/h`;
-      document.getElementById('telOrigin').textContent = obj.origin;
-      document.getElementById('telExtra').textContent = obj.extra;
+
+      let originText = obj.origin;
+      let extraText = obj.extra;
+      if (obj.type === 'debris') {
+        originText = t.debrisOrigin;
+        extraText = t.debrisExtra;
+      } else if (obj.type === 'balloon') {
+        originText = t.balloonOrigin;
+      } else if (obj.type === 'asteroid') {
+        originText = t.asteroidOrigin;
+      }
+
+      document.getElementById('telOrigin').textContent = originText;
+      document.getElementById('telExtra').textContent = extraText;
 
       if (obj.primitive) {
         selectionMarker.position = obj.primitive.position;
       }
     }
 
-    // Suivi Caméra de l'objet
     document.getElementById('trackObjectBtn').onclick = () => {
       if (state.selectedObject && state.selectedObject.primitive) {
         state.trackingActive = true;
-        showToast(`Verrouillage caméra sur : ${state.selectedObject.name}`);
+        const t = i18n[currentLang];
+        showToast(`${t.toastLockCamera} ${state.selectedObject.name}`);
       }
     };
 
-    // Quitter le suivi et recentrer
     document.getElementById('closeFocusBtn').onclick = () => {
       state.trackingActive = false;
       viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
@@ -927,7 +1179,7 @@ HUBBLE SPACE TELESCOPE
 
       function applyFilter(list, layerEnabled) {
         list.forEach(item => {
-          const matchQuery = item.name.toUpperCase().includes(query) || item.category.toUpperCase().includes(query);
+          const matchQuery = item.name.toUpperCase().includes(query);
           const isVisible = layerEnabled && matchQuery;
           item.visible = isVisible;
           if (item.primitive) item.primitive.show = isVisible;
@@ -941,41 +1193,32 @@ HUBBLE SPACE TELESCOPE
       applyFilter(state.balloons, showBalloons);
       applyFilter(state.asteroids, showNEO);
 
-      document.getElementById('totalVisibleCounter').textContent = `${totalCount} objets`;
+      const t = i18n[currentLang];
+      document.getElementById('totalVisibleCounter').textContent = `${totalCount} ${t.objectsUnit}`;
     }
 
-    // Écouteurs d'événements pour les filtres
     ['layerSatellites', 'layerDebris', 'layerAviation', 'layerBalloons', 'layerAsteroids'].forEach(id => {
       document.getElementById(id).addEventListener('change', updateVisibility);
     });
 
     document.getElementById('globalSearch').addEventListener('input', updateVisibility);
 
-    // Basculer la couche Nuages
     document.getElementById('layerClouds').addEventListener('change', (e) => {
       if (weatherLayer) {
         weatherLayer.show = e.target.checked;
       }
     });
 
-    // Changement de groupe de satellites CelesTrak
     document.getElementById('satGroupSelect').addEventListener('change', (e) => {
       loadSatellites(e.target.value);
     });
 
-    // Rafraîchir les avions
     document.getElementById('refreshPlanesBtn').onclick = () => {
       loadAviationTraffic();
-      showToast("Actualisation des vols civils...");
+      const t = i18n[currentLang];
+      showToast(t.toastFlightRefresh);
     };
 
-    // Basculer le HUD (Mobile & Tablette)
-    document.getElementById('hudToggleBtn').onclick = () => {
-      const hud = document.getElementById('mainHUD');
-      hud.classList.toggle('hidden');
-    };
-
-    // Toast interactif
     function showToast(msg) {
       const toast = document.getElementById('toast');
       toast.textContent = msg;
@@ -984,24 +1227,27 @@ HUBBLE SPACE TELESCOPE
     }
 
     // -------------------------------------------------------------
-    // DÉMARRAGE ET BOUCLE GLOBALE
+    // DÉMARRAGE DE L'APPLICATION
     // -------------------------------------------------------------
     window.onload = async () => {
-      // Position caméra initiale centrée sur l'Europe à haute altitude
+      // Configuration de la langue initiale
+      setLanguage(currentLang);
+
+      // Vue caméra orbitale initiale
       viewer.camera.setView({
         destination: Cesium.Cartesian3.fromDegrees(2.35, 48.85, 22000000)
       });
 
       setupUserGeolocation();
 
-      // Chargement de toutes les couches du ciel
+      // Chargement simultané des calques
       loadSpaceDebris();
       loadStratosphericBalloons();
       loadNearEarthAsteroids();
       loadAviationTraffic();
-      await loadSatellites('stations'); // Démarre avec les stations pour affichage instantané
+      await loadSatellites('stations');
 
-      // Boucle orbitale cadencée à 1 seconde pour soulager le CPU
+      // Boucle orbitale cadencée à 1 seconde
       setInterval(updateOrbitalCalculations, 1000);
       updateOrbitalCalculations();
     };
