@@ -118,6 +118,14 @@
         </button>
       </div>
 
+      <!-- Bouton Dépôt GitHub -->
+      <a href="https://github.com/j-catania/lookup" target="_blank" rel="noopener noreferrer" 
+         title="Code source sur GitHub"
+         class="p-2 sm:px-2.5 sm:py-1.5 bg-gray-900/90 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl text-xs flex items-center gap-1.5 border border-gray-700/80 transition active:scale-95 shadow">
+        <i class="ph-bold ph-github-logo text-base sm:text-lg"></i>
+        <span class="text-[11px] font-medium hidden lg:inline">GitHub</span>
+      </a>
+
       <!-- Bouton Toggle Menu Mobile / Desktop -->
       <button id="hudToggleBtn" title="Basculer le panneau de contrôle"
               class="p-2 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl text-sm transition active:scale-95 border border-gray-700">
@@ -236,8 +244,16 @@
       <span id="i18nClickInspect">Clic = inspection</span>
     </div>
 
-    <!-- Footer personnalisé en bas du menu -->
-    <div class="pt-3 border-t border-gray-800/80 text-center">
+    <!-- Footer personnalisé en bas du menu avec GitHub & Crédit -->
+    <div class="pt-3 border-t border-gray-800/80 text-center space-y-2">
+      <div class="flex items-center justify-center">
+        <a href="https://github.com/j-catania/lookup" target="_blank" rel="noopener noreferrer" 
+           class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-900/80 hover:bg-gray-800 text-[11px] text-gray-300 hover:text-white border border-gray-700/70 transition">
+          <i class="ph-bold ph-github-logo text-sm"></i>
+          <span>j-catania/lookup</span>
+          <i class="ph ph-arrow-square-out text-[10px] text-gray-400"></i>
+        </a>
+      </div>
       <p class="text-[11px] text-gray-400 flex items-center justify-center gap-1">
         <span id="i18nMadeWith">made with</span>
         <span class="text-rose-500 animate-pulse text-xs">❤️</span>
